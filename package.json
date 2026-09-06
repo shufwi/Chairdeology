@@ -1,0 +1,12 @@
+{
+  "name": "chair-de-ology",
+  "version": "1.0.0",
+  "description": "Chair De Ology - Design How You Sit",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
