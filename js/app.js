@@ -88,9 +88,8 @@
   let isPanelOpen = false;
   let panelPosition = 0; // 0 = closed, 1 = fully open
   let panelTargetPosition = 0;
-  let panelWidth = 400;
-  let panelEasing = 0.05;
-  let panelClickBlockTimer = 0;
+  let panelWidth = 240;
+  let panelTurntableAngle = 0;
 
   let resetButtonX, resetButtonY;
   const resetButtonWidth = 160, resetButtonHeight = 60;
@@ -132,8 +131,11 @@
   // Three.js Core Objects
   let scene, camera, renderer;
   let centerChairMeshGroup = null;
-  const optionMeshes = []; // Three.js Groups for options 0..20
+  const optionMeshes = []; // Three.js Groups for options 0..20 (main scene)
+  const panelOptionMeshes = []; // Three.js Groups for options 0..20 (panel scene)
   let mainSceneGroup = null;
+  let panelSceneGroup = null;
+  let panelBgMesh = null;
   let resultSceneGroup = null;
 
   // --- Option Class ---
@@ -295,9 +297,11 @@
 
     // Scene Groups
     mainSceneGroup = new THREE.Group();
+    panelSceneGroup = new THREE.Group();
     resultSceneGroup = new THREE.Group();
 
     scene.add(mainSceneGroup);
+    scene.add(panelSceneGroup);
     scene.add(resultSceneGroup);
 
     // Lights for Main Scene
@@ -311,6 +315,29 @@
     const dirLight2 = new THREE.DirectionalLight(0xaaaaaa, 0.5);
     dirLight2.position.set(-200, -100, 300);
     mainSceneGroup.add(dirLight2);
+
+    // Lights for Panel Scene
+    const panelAmbient = new THREE.AmbientLight(0xffffff, 0.85);
+    panelSceneGroup.add(panelAmbient);
+
+    const panelDir1 = new THREE.DirectionalLight(0xffffff, 0.75);
+    panelDir1.position.set(200, 200, 400);
+    panelSceneGroup.add(panelDir1);
+
+    const panelDir2 = new THREE.DirectionalLight(0x888888, 0.4);
+    panelDir2.position.set(-100, -100, 200);
+    panelSceneGroup.add(panelDir2);
+
+    // Panel Background Mesh (dark translucent backing plane)
+    const panelBgGeom = new THREE.PlaneGeometry(1, 1);
+    const panelBgMat = new THREE.MeshBasicMaterial({
+      color: 0x181818,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    });
+    panelBgMesh = new THREE.Mesh(panelBgGeom, panelBgMat);
+    panelSceneGroup.add(panelBgMesh);
 
     // Lights for Result Scene
     const resAmbient = new THREE.AmbientLight(0xffffff, 0.7);
@@ -400,11 +427,21 @@
         optionMeshes.push(optionGroup);
         mainSceneGroup.add(optionGroup);
         optionGroup.visible = false;
+
+        const panelOptionGroup = parseAndNormalizeOBJ(window.MODEL_DATA[key], optionMaterial.clone());
+        panelOptionMeshes.push(panelOptionGroup);
+        panelSceneGroup.add(panelOptionGroup);
+        panelOptionGroup.visible = false;
       } else {
         const placeholderGroup = new THREE.Group();
         optionMeshes.push(placeholderGroup);
         mainSceneGroup.add(placeholderGroup);
         placeholderGroup.visible = false;
+
+        const panelPlaceholder = new THREE.Group();
+        panelOptionMeshes.push(panelPlaceholder);
+        panelSceneGroup.add(panelPlaceholder);
+        panelPlaceholder.visible = false;
 
         objLoader.load(`Assets/OBJ/Option${i}_P.obj`, (loadedGroup) => {
           loadedGroup.traverse((child) => {
@@ -412,7 +449,8 @@
               child.material = optionMaterial.clone();
             }
           });
-          placeholderGroup.add(loadedGroup);
+          placeholderGroup.add(loadedGroup.clone(true));
+          panelPlaceholder.add(loadedGroup.clone(true));
         });
       }
     }
@@ -556,6 +594,58 @@
 
     drawPresentButton();
     drawSelectionCounter();
+
+    // Intuitive cursor updates
+    const mouseRelX = mouseX - width / 2;
+    const mouseRelY = mouseY - height / 2;
+    let cursorStyle = 'default';
+
+    if (isMouseOverResetButton() || isCounterHovered) {
+      cursorStyle = 'pointer';
+    } else if (isPanelOpen) {
+      const panelLeft = width / 2 - panelWidth * panelPosition;
+      const closeBtnX = panelLeft + panelWidth - 30;
+      const closeBtnY = -height / 2 + 35;
+      if (dist(mouseRelX, mouseRelY, closeBtnX, closeBtnY) < 18) {
+        cursorStyle = 'pointer';
+      } else if (mouseRelX >= panelLeft && mouseRelX <= width / 2) {
+        const selectedIds = [];
+        for (let i = 0; i < selectedOptions.length; i++) {
+          if (selectedOptions[i]) selectedIds.push(i);
+        }
+        const count = selectedIds.length;
+        if (count > 0) {
+          const availableHeight = height - 140;
+          const slotHeight = Math.min(105, availableHeight / Math.max(count, 1));
+          const startY = -availableHeight / 2 + slotHeight / 2 + 20;
+          for (let idx = 0; idx < count; idx++) {
+            const itemY_2D = startY + idx * slotHeight;
+            if (Math.abs(mouseRelX - (panelLeft + panelWidth / 2)) < 45 && Math.abs(mouseRelY - itemY_2D) < 40) {
+              cursorStyle = 'pointer';
+              break;
+            }
+          }
+        }
+      }
+    } else if (
+      isButtonActive &&
+      mouseRelX > presentButtonX - presentButtonWidth / 2 &&
+      mouseRelX < presentButtonX + presentButtonWidth / 2 &&
+      mouseRelY > presentButtonY - presentButtonHeight / 2 &&
+      mouseRelY < presentButtonY + presentButtonHeight / 2
+    ) {
+      cursorStyle = 'pointer';
+    } else if (isMouseOverModel || isMouseOverCenter) {
+      cursorStyle = 'grab';
+    } else {
+      for (const option of options) {
+        if (option.isActive && (dist(mouseRelX, mouseRelY, option.x, option.y) < option.size / 2 || option.isAtPointM())) {
+          cursorStyle = 'pointer';
+          break;
+        }
+      }
+    }
+    uiCanvas.style.cursor = cursorStyle;
   }
 
   function updateMain3DScene() {
@@ -576,7 +666,7 @@
       centerChairMeshGroup.scale.set(80, 80, 80);
     }
 
-    // 2. Option Models
+    // 2. Option Models in Center
     for (let i = 0; i < numOptions; i++) {
       const mesh = optionMeshes[i];
       if (!mesh) continue;
@@ -599,6 +689,58 @@
         mesh.scale.set(80, 80, 80);
       } else {
         mesh.visible = false;
+      }
+    }
+
+    // 3. Panel Selected 3D Turntable Models
+    panelTurntableAngle += 0.02;
+    if (panelPosition > 0.005) {
+      panelSceneGroup.visible = true;
+      const panelLeft = width / 2 - panelWidth * panelPosition;
+      const panelCenterX = panelLeft + panelWidth / 2;
+
+      if (panelBgMesh) {
+        panelBgMesh.position.set(panelCenterX, 0, 0);
+        panelBgMesh.scale.set(panelWidth, height, 1);
+      }
+
+      const selectedIds = [];
+      for (let i = 0; i < selectedOptions.length; i++) {
+        if (selectedOptions[i]) selectedIds.push(i);
+      }
+
+      const count = selectedIds.length;
+      for (let i = 0; i < numOptions; i++) {
+        if (panelOptionMeshes[i]) {
+          panelOptionMeshes[i].visible = false;
+        }
+      }
+
+      if (count > 0) {
+        const availableHeight = height - 140;
+        const slotHeight = Math.min(105, availableHeight / Math.max(count, 1));
+        const startY = -availableHeight / 2 + slotHeight / 2 + 20;
+
+        for (let idx = 0; idx < count; idx++) {
+          const optId = selectedIds[idx];
+          const mesh = panelOptionMeshes[optId];
+          if (mesh) {
+            mesh.visible = true;
+            const itemY_2D = startY + idx * slotHeight;
+            const threeY = -itemY_2D;
+
+            mesh.position.set(panelCenterX, threeY, 50);
+            mesh.rotation.set(-Math.PI / 7, panelTurntableAngle + idx * 0.4, 0);
+            mesh.scale.set(28, 28, 28);
+          }
+        }
+      }
+    } else {
+      panelSceneGroup.visible = false;
+      for (let i = 0; i < numOptions; i++) {
+        if (panelOptionMeshes[i]) {
+          panelOptionMeshes[i].visible = false;
+        }
       }
     }
   }
@@ -727,6 +869,7 @@
       options[i].isActive = true;
       selectedOptions[i] = false;
     }
+    totalScrollAmount = 0;
   }
 
   function handleOptionSelection(selectedOption) {
@@ -793,7 +936,7 @@
   function drawSelectionCounter() {
     const counterX = width / 2 - 80;
     const counterY = height / 2 - 60;
-    const counterSize = 100;
+    const counterSize = 80;
 
     const mouseRelX = mouseX - width / 2;
     const mouseRelY = mouseY - height / 2;
@@ -801,94 +944,116 @@
     isCounterHovered = dist(mouseRelX, mouseRelY, counterX, counterY) < counterSize / 2;
 
     ctx.save();
-    const displaySize = isCounterHovered ? counterSize * 1.2 : counterSize;
+    const displaySize = isCounterHovered ? counterSize * 1.12 : counterSize;
 
     // Circle background
     ctx.beginPath();
     ctx.arc(counterX, counterY, displaySize / 2, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.59)';
+    ctx.fillStyle = isCounterHovered ? 'rgba(30, 30, 30, 0.9)' : 'rgba(0, 0, 0, 0.65)';
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = isCounterHovered ? 2.5 : 2;
+    ctx.strokeStyle = isCounterHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.8)';
     ctx.stroke();
 
     // Text
     ctx.fillStyle = '#ffffff';
-    ctx.font = `${isCounterHovered ? 36 : 30}px Kollektif-Bold, sans-serif`;
+    ctx.font = `${isCounterHovered ? 26 : 22}px Kollektif-Bold, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`${currentSelections}/${maxSelections}`, counterX, counterY);
 
-    drawSelectionPanel();
     ctx.restore();
 
-    if (panelClickBlockTimer > 0) {
-      panelClickBlockTimer--;
-    }
+    drawSelectionPanel();
   }
 
   function drawSelectionPanel() {
-    panelPosition += (panelTargetPosition - panelPosition) * panelEasing;
+    panelPosition += (panelTargetPosition - panelPosition) * 0.12;
 
-    if (panelPosition < 0.01 && panelTargetPosition === 0) {
+    if (panelPosition < 0.005 && panelTargetPosition === 0) {
       panelPosition = 0;
       return;
     }
 
-    const panelX = width / 2 - panelWidth * (1 - panelPosition);
+    const panelLeft = width / 2 - panelWidth * panelPosition;
+    const panelCenterX = panelLeft + panelWidth / 2;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(30, 30, 10, 0.9)';
-    ctx.fillRect(panelX, -height / 2, panelWidth, height);
+
+    // Subtle divider line at the left edge of panel
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelLeft, -height / 2);
+    ctx.lineTo(panelLeft, height / 2);
+    ctx.stroke();
 
     // Close button
-    const closeButtonX = panelX + panelWidth - 30;
-    const closeButtonY = -height / 2 + 30;
+    const closeBtnX = panelLeft + panelWidth - 30;
+    const closeBtnY = -height / 2 + 35;
 
     const mouseRelX = mouseX - width / 2;
     const mouseRelY = mouseY - height / 2;
-    const isCloseHovered = dist(mouseRelX, mouseRelY, closeButtonX, closeButtonY) < 15;
+    const isCloseHovered = dist(mouseRelX, mouseRelY, closeBtnX, closeBtnY) < 18;
 
-    ctx.fillStyle = isCloseHovered ? '#ffffff' : '#c8c8c8';
+    ctx.fillStyle = isCloseHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.55)';
     ctx.font = '24px Kollektif-Bold, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('×', closeButtonX, closeButtonY);
+    ctx.fillText('×', closeBtnX, closeBtnY);
 
-    displaySelectedOptionsInPanel(panelX + panelWidth / 2, -height / 2 + 100);
+    displaySelectedOptionsInPanel(panelCenterX);
     ctx.restore();
   }
 
-  function displaySelectedOptionsInPanel(panelCenterX, startY) {
-    let selectedCount = 0;
-    const spacing = 150;
-
-    ctx.save();
-    ctx.fillStyle = '#c8c8c8';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.font = '25px Kollektif-Bold, sans-serif';
-    ctx.fillText('Selected Designs', panelCenterX, startY - 20);
-
+  function displaySelectedOptionsInPanel(panelCenterX) {
+    const selectedIds = [];
     for (let i = 0; i < selectedOptions.length; i++) {
-      if (selectedOptions[i]) {
-        const optionY = startY + selectedCount * spacing;
+      if (selectedOptions[i]) selectedIds.push(i);
+    }
 
-        // Render small thumbnail representation
-        if (optionImages[i] && optionImages[i].complete) {
-          drawCenteredImage(optionImages[i], panelCenterX, optionY + 70, 70, 70);
+    const count = selectedIds.length;
+    const mouseRelX = mouseX - width / 2;
+    const mouseRelY = mouseY - height / 2;
+
+    if (count > 0) {
+      const availableHeight = height - 140;
+      const slotHeight = Math.min(105, availableHeight / Math.max(count, 1));
+      const startY = -availableHeight / 2 + slotHeight / 2 + 20;
+
+      for (let idx = 0; idx < count; idx++) {
+        const itemY_2D = startY + idx * slotHeight;
+        const isItemHovered = Math.abs(mouseRelX - panelCenterX) < 45 && Math.abs(mouseRelY - itemY_2D) < 40;
+
+        // Subtle pedestal ring under rotating 3D model (no text below models)
+        ctx.beginPath();
+        ctx.ellipse(panelCenterX, itemY_2D + 32, 32, 9, 0, 0, Math.PI * 2);
+        ctx.fillStyle = isItemHovered ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.3)';
+        ctx.fill();
+        ctx.strokeStyle = isItemHovered ? 'rgba(255, 255, 255, 0.35)' : 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Optional hover indicator badge (subtle remove indicator)
+        if (isItemHovered) {
+          ctx.beginPath();
+          ctx.arc(panelCenterX + 35, itemY_2D - 25, 10, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(200, 50, 50, 0.85)';
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '14px Kollektif-Bold, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('−', panelCenterX + 35, itemY_2D - 25);
         }
-
-        selectedCount++;
       }
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.font = '14px Kollektif-Bold, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No selections yet', panelCenterX, 0);
     }
-
-    if (selectedCount === 0) {
-      ctx.fillStyle = '#c8c8c8';
-      ctx.font = '16px Kollektif-Bold, sans-serif';
-      ctx.fillText('No designs selected yet', panelCenterX, startY + 50);
-    }
-    ctx.restore();
   }
 
   // --- Interactive Dots & Details ---
@@ -1151,7 +1316,7 @@
       }
     }
     const moralFactor = moralYesCount >= 4 ? "F" : "T";
-    const decisionFactor = totalScrollAmount > 8000 ? "P" : "J";
+    const decisionFactor = totalScrollAmount > 9000 ? "P" : "J";
 
     let styleIndex;
     if (imaginativeFactor === "N") {
@@ -1202,28 +1367,53 @@
           return;
         }
 
-        if (isPanelOpen) {
-          const panelX = width / 2 - panelWidth * (1 - panelPosition);
-          if (relMouseX > panelX && relMouseX < width / 2) {
-            const closeButtonX = panelX + panelWidth - 30;
-            const closeButtonY = -height / 2 + 30;
-            if (dist(relMouseX, relMouseY, closeButtonX, closeButtonY) < 15) {
-              panelTargetPosition = 0;
-              isPanelOpen = false;
-              panelClickBlockTimer = 10;
-              return;
-            }
-            return;
-          }
-        }
-
         const counterX = width / 2 - 80;
         const counterY = height / 2 - 60;
-        if (isCounterHovered && panelClickBlockTimer === 0) {
-          panelTargetPosition = isPanelOpen ? 0 : 1;
+        const counterSize = 80;
+
+        if (dist(relMouseX, relMouseY, counterX, counterY) < counterSize / 2) {
           isPanelOpen = !isPanelOpen;
-          panelClickBlockTimer = 10;
+          panelTargetPosition = isPanelOpen ? 1 : 0;
           return;
+        }
+
+        if (isPanelOpen) {
+          const panelLeft = width / 2 - panelWidth * panelPosition;
+          const closeBtnX = panelLeft + panelWidth - 30;
+          const closeBtnY = -height / 2 + 35;
+
+          if (dist(relMouseX, relMouseY, closeBtnX, closeBtnY) < 20) {
+            panelTargetPosition = 0;
+            isPanelOpen = false;
+            return;
+          }
+
+          if (relMouseX >= panelLeft && relMouseX <= width / 2) {
+            const selectedIds = [];
+            for (let i = 0; i < selectedOptions.length; i++) {
+              if (selectedOptions[i]) selectedIds.push(i);
+            }
+            const count = selectedIds.length;
+            if (count > 0) {
+              const availableHeight = height - 140;
+              const slotHeight = Math.min(105, availableHeight / Math.max(count, 1));
+              const startY = -availableHeight / 2 + slotHeight / 2 + 20;
+
+              for (let idx = 0; idx < count; idx++) {
+                const optId = selectedIds[idx];
+                const itemY_2D = startY + idx * slotHeight;
+                if (Math.abs(relMouseX - (panelLeft + panelWidth / 2)) < 45 && Math.abs(relMouseY - itemY_2D) < 40) {
+                  resetOptionGroup(options[optId].groupIndex);
+                  return;
+                }
+              }
+            }
+            return;
+          } else {
+            // Click outside drawer closes drawer
+            panelTargetPosition = 0;
+            isPanelOpen = false;
+          }
         }
 
         if (
@@ -1314,7 +1504,7 @@
     window.addEventListener('wheel', (e) => {
       if (currentPage !== "main") return;
       angleOffset += e.deltaY * 0.001;
-      totalScrollAmount += Math.abs(e.deltaY);
+      totalScrollAmount += Math.abs(e.deltaY) + Math.abs(e.deltaX || 0);
     });
 
     window.addEventListener('keydown', (e) => {
