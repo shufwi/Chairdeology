@@ -7,18 +7,71 @@
     <link rel="stylesheet" type="text/css" href="style.css">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
 
-    <!-- Three.js & OBJLoader -->
     <script src="js/three.min.js"></script>
     <script src="js/OBJLoader.js"></script>
-
-    <!-- Pre-bundled model data for offline file:// playback -->
     <script src="js/modelsData.js"></script>
   </head>
   <body>
     <canvas id="webgl-canvas"></canvas>
     <canvas id="ui-canvas"></canvas>
 
+    <div id="hud" class="hud is-hidden">
+      <header class="brand">
+        <h1><span class="brand-white">CHAIR</span><span class="brand-ink">DE OLOGY</span></h1>
+        <p class="subtitle">DESIGN HOW YOU SIT</p>
+        <p id="hint" class="hint">Scroll the ring. Hover a part to try it on the chair. Click to keep it.</p>
+      </header>
+
+      <button type="button" id="btn-reset" class="btn-reset">RESET</button>
+
+      <div id="focus-chip" class="focus-chip is-hidden" aria-live="polite"></div>
+
+      <div class="present-wrap">
+        <button type="button" id="btn-present" class="btn-present" disabled aria-label="Present your chair">
+          <img src="Assets/Present.png" alt="">
+        </button>
+        <p id="present-help" class="present-help">Choose at least 5 pieces</p>
+      </div>
+
+      <button type="button" id="btn-tray" class="btn-tray" aria-label="Open your chair">
+        <span id="tray-count">0/7</span>
+      </button>
+    </div>
+
+    <div id="result-hud" class="result-hud is-hidden">
+      <div class="result-copy">
+        <p class="eyebrow">Your sitting style is</p>
+        <h2 id="style-name"></h2>
+        <p id="style-tagline" class="style-tagline"></p>
+        <p id="style-body" class="style-body"></p>
+        <p id="style-code" class="style-code"></p>
+      </div>
+      <div class="result-actions">
+        <button type="button" id="btn-back" class="btn-text">Back</button>
+        <button type="button" id="btn-download" class="btn-text">Download Image</button>
+      </div>
+    </div>
+
+    <div id="loading-hud" class="loading-hud is-hidden">
+      <p>Reading how you sit…</p>
+      <div class="loading-track"><div id="loading-bar" class="loading-bar"></div></div>
+    </div>
+
+    <div id="intro" class="intro">
+      <div class="intro-card">
+        <p class="intro-kicker">Chair De Ology</p>
+        <h2>Build the chair in front of you.</h2>
+        <ol>
+          <li>Scroll or drag the ring of parts on the right.</li>
+          <li>Hover a part to try it on the chair. Click to keep it — one from each set, at least 5 and at most 7.</li>
+          <li>The three dots still hold material, character, and a quiet fact.</li>
+          <li>Open the tray to turn the chair you have built. Click a part there to lift it off.</li>
+          <li>Present when you are ready. The sitting style is what waits until the end.</li>
+        </ol>
+        <button type="button" id="btn-begin" class="btn-begin">Begin</button>
+      </div>
+    </div>
+
     <script src="js/app.js"></script>
   </body>
 </html>
-
